@@ -1,0 +1,16 @@
+{
+    "hosts": [
+        {
+            "nome": "PC1",
+            "ip": "192.168.1.1",
+            "usuario": "abcd",
+            "senha": "suasenha"
+        },
+        {
+            "nome": "PC2",
+            "ip": "192.168.1.2",
+            "usuario": "abcd",
+            "certificado": "/home/sshmon/.ssh/id_rsa"
+        }
+    ]
+}
