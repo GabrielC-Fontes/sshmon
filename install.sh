@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ -z "$BASH_VERSION" ]
+then
+    exec bash "$0" "$@"
+fi
+
 set -e
 
 APP_DIR="/opt/sshmon"
@@ -105,10 +110,9 @@ do
 
     read -p "E-mail remetente: " SMTP_USER
 
-    if [[ "$SMTP_USER" == *"@"* ]]
-    then
-        break
-    fi
+    case "$SMTP_USER" in
+        *@*) break ;;
+    esac
 
     echo "E-mail inválido. Deve conter @."
 
@@ -143,10 +147,9 @@ do
 
     read -p "E-mail destinatário dos alertas: " SMTP_TO
 
-    if [[ "$SMTP_TO" == *"@"* ]]
-    then
-        break
-    fi
+    case "$SMTP_TO" in
+        *@*) break ;;
+    esac
 
     echo "E-mail inválido. Deve conter @."
 
@@ -299,8 +302,8 @@ echo
 
 read -p "Deseja configurar a chave SSH agora? (s/n): " EDIT_KEY
 
-if [[ "$EDIT_KEY" =~ ^[Ss]$ ]]
-then
+case "$EDIT_KEY" in
+    [Ss])
 
     echo
     echo "Abra outro terminal e copie sua chave para:"
@@ -310,7 +313,8 @@ then
     echo "Quando terminar pressione ENTER."
     read
 
-fi
+    ;;
+esac
 
 echo
 
@@ -393,12 +397,13 @@ echo
 echo "Deseja editar o hosts.json agora? (s/n)"
 read -p "Escolha: " EDIT_HOSTS
 
-if [[ "$EDIT_HOSTS" =~ ^[Ss]$ ]]
-then
+case "$EDIT_HOSTS" in
+    [Ss])
 
     sudo nano "$APP_DIR/hosts.json"
 
-fi
+    ;;
+esac
 
 # ============================================================
 # INICIAR SERVIÇO
