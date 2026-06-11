@@ -7,6 +7,7 @@ SSHMON e um monitor de disponibilidade via SSH para servidores Linux. Ele testa 
 - Monitoramento de varios hosts em paralelo.
 - Autenticacao por senha ou chave privada SSH.
 - Alertas SMTP para hosts offline e recuperados.
+- Supressao de alertas repetidos pelo mesmo host/tipo por 24 horas.
 - Logs separados para sucesso, falha, acesso negado e avisos.
 - Rotacao simples de logs por tamanho.
 - Recarregamento automatico do `hosts.json` quando o arquivo e alterado.
@@ -16,6 +17,7 @@ SSHMON e um monitor de disponibilidade via SSH para servidores Linux. Ele testa 
 
 - Linux com `systemd`.
 - Python 3.
+- Cliente OpenSSH (`ssh`).
 - Acesso `sudo` para instalacao.
 - Conta SMTP para envio de alertas.
 
@@ -24,6 +26,7 @@ Dependencias Python:
 ```txt
 paramiko==4.0.0
 python-dotenv==1.1.1
+cryptography==45.0.7
 ```
 
 ## Instalacao
@@ -38,9 +41,11 @@ chmod +x install.sh
 O instalador ira:
 
 - validar os arquivos obrigatorios;
+- validar Python, `venv`, `pip` e cliente SSH;
 - configurar SMTP e criar o arquivo `.env`;
 - criar o usuario de servico `sshmon`;
 - copiar os arquivos para `/opt/sshmon`;
+- criptografar a senha SMTP em `/etc/sshmon`;
 - criar os logs em `/var/log/sshmon`;
 - criar ambiente virtual Python;
 - instalar as dependencias;
@@ -93,15 +98,21 @@ SMTP_SERVER="smtp.exemplo.com"
 SMTP_PORT="587"
 SMTP_TLS="starttls"
 SMTP_USER="alertas@exemplo.com"
-SMTP_PASS_FILE="/etc/sshmon/smtp_pass"
+SMTP_PASS_ENC_FILE="/etc/sshmon/smtp_pass.enc"
+SMTP_PASS_KEY_FILE="/etc/sshmon/smtp_pass.key"
 SMTP_TO="destino@exemplo.com"
 INTERVALO_VERIFICACAO="5"
 FALHAS_PARA_ALERTA="3"
+ALERTA_EMAIL_INTERVALO_HORAS="24"
 SSH_TIMEOUT="5"
 MAX_LOG_SIZE_MB="10"
 ```
 
 `SMTP_TLS` aceita `starttls` ou `ssl`.
+
+`INTERVALO_VERIFICACAO` e `SSH_TIMEOUT` sao em segundos.
+
+`ALERTA_EMAIL_INTERVALO_HORAS` controla por quantas horas um alerta do mesmo tipo para o mesmo host nao sera reenviado. O padrao e `24`.
 
 ## Logs
 
@@ -112,7 +123,10 @@ successful.log
 unsuccessful.log
 accessdenied.log
 warnings.log
+alert_state.json
 ```
+
+`alert_state.json` guarda o horario dos ultimos alertas enviados para evitar reenvios repetidos dentro da janela configurada.
 
 ## Comandos Uteis
 
@@ -153,13 +167,16 @@ chmod +x uninstall.sh
 ## Seguranca
 
 - Nao publique o arquivo `.env`.
-- A senha SMTP fica fora do `.env`, em `/etc/sshmon/smtp_pass`.
-- O arquivo da senha deve ficar com permissao restrita:
+- A senha SMTP fica fora do `.env`, criptografada em `/etc/sshmon/smtp_pass.enc`.
+- A chave local de descriptografia fica em `/etc/sshmon/smtp_pass.key`.
+- Os arquivos devem ficar com permissao restrita:
 
 ```bash
-sudo chown root:sshmon /etc/sshmon/smtp_pass
-sudo chmod 640 /etc/sshmon/smtp_pass
+sudo chown root:sshmon /etc/sshmon/smtp_pass.enc /etc/sshmon/smtp_pass.key
+sudo chmod 640 /etc/sshmon/smtp_pass.enc /etc/sshmon/smtp_pass.key
 ```
+
+- A criptografia protege a senha em repouso, mas nao impede acesso por `root` nem por alguem que comprometa o usuario de servico `sshmon`, pois o servico precisa descriptografar a senha automaticamente ao iniciar.
 
 - Prefira chave SSH quando possivel.
 - Coloque chaves `.pem` ou `.ppk` em `/home/sshmon/.ssh/`.

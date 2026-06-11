@@ -15,6 +15,7 @@ from concurrent.futures import (
 
 import paramiko
 from dotenv import load_dotenv
+from cryptography.fernet import Fernet
 
 
 # ============================================================
@@ -48,9 +49,16 @@ WARNING_LOG = os.path.join(
     "warnings.log"
 )
 
+ALERT_STATE_FILE = os.path.join(
+    LOG_DIR,
+    "alert_state.json"
+)
+
 MAX_LOG_SIZE_MB = 10
 
 SSH_TIMEOUT = 5
+
+ALERTA_EMAIL_INTERVALO_HORAS = 24
 
 
 # ============================================================
@@ -108,6 +116,17 @@ SSH_TIMEOUT = get_int_env(
     SSH_TIMEOUT
 )
 
+ALERTA_EMAIL_INTERVALO_HORAS = get_int_env(
+    "ALERTA_EMAIL_INTERVALO_HORAS",
+    ALERTA_EMAIL_INTERVALO_HORAS
+)
+
+ALERTA_EMAIL_INTERVALO_SEGUNDOS = (
+    ALERTA_EMAIL_INTERVALO_HORAS
+    * 60
+    * 60
+)
+
 SMTP_SERVER = os.getenv(
     "SMTP_SERVER"
 )
@@ -132,6 +151,14 @@ SMTP_PASS_FILE = os.getenv(
     "SMTP_PASS_FILE"
 )
 
+SMTP_PASS_ENC_FILE = os.getenv(
+    "SMTP_PASS_ENC_FILE"
+)
+
+SMTP_PASS_KEY_FILE = os.getenv(
+    "SMTP_PASS_KEY_FILE"
+)
+
 
 def read_secret_file(path):
 
@@ -152,8 +179,61 @@ def read_secret_file(path):
         return None
 
 
+def read_encrypted_secret_file(
+    encrypted_path,
+    key_path
+):
+
+    if (
+        not encrypted_path
+        or
+        not key_path
+    ):
+        return None
+
+    try:
+
+        key = read_secret_file(
+            key_path
+        )
+
+        if not key:
+            return None
+
+        with open(
+            encrypted_path,
+            "rb"
+        ) as arquivo:
+
+            encrypted_value = arquivo.read().strip()
+
+        return Fernet(
+            key.encode("utf-8")
+        ).decrypt(
+            encrypted_value
+        ).decode(
+            "utf-8"
+        )
+
+    except Exception as erro:
+
+        try:
+
+            log_warning(
+                f"Erro ao descriptografar senha SMTP: {erro}"
+            )
+
+        except NameError:
+            pass
+
+        return None
+
+
 SMTP_PASS = os.getenv(
     "SMTP_PASS"
+) or read_encrypted_secret_file(
+    SMTP_PASS_ENC_FILE,
+    SMTP_PASS_KEY_FILE
 ) or read_secret_file(
     SMTP_PASS_FILE
 )
@@ -323,7 +403,7 @@ def send_email(
             "SMTP não configurado. Alerta por e-mail ignorado."
         )
 
-        return
+        return False
 
     smtp = None
 
@@ -357,20 +437,24 @@ def send_email(
             smtp.starttls()
             smtp.ehlo()
 
-            smtp.login(
-                SMTP_USER,
-                SMTP_PASS
-            )
+        smtp.login(
+            SMTP_USER,
+            SMTP_PASS
+        )
 
         smtp.send_message(
             email
         )
+
+        return True
 
     except Exception as erro:
 
         log_warning(
             f"SMTP ERROR: {erro}"
         )
+
+        return False
 
     finally:
 
@@ -381,6 +465,139 @@ def send_email(
 
         except Exception:
             pass
+
+
+def load_alert_state():
+
+    try:
+
+        if not os.path.exists(
+            ALERT_STATE_FILE
+        ):
+            return {}
+
+        with open(
+            ALERT_STATE_FILE,
+            "r",
+            encoding="utf-8"
+        ) as arquivo:
+
+            dados = json.load(
+                arquivo
+            )
+
+        if isinstance(
+            dados,
+            dict
+        ):
+            return dados
+
+    except Exception as erro:
+
+        log_warning(
+            f"Erro ao carregar estado de alertas: {erro}"
+        )
+
+    return {}
+
+
+def save_alert_state(
+    state
+):
+
+    try:
+
+        with open(
+            ALERT_STATE_FILE,
+            "w",
+            encoding="utf-8"
+        ) as arquivo:
+
+            json.dump(
+                state,
+                arquivo,
+                indent=4,
+                sort_keys=True
+            )
+
+    except Exception as erro:
+
+        log_warning(
+            f"Erro ao salvar estado de alertas: {erro}"
+        )
+
+
+def alert_can_be_sent(
+    alert_key
+):
+
+    state = load_alert_state()
+
+    last_sent = state.get(
+        alert_key
+    )
+
+    if not last_sent:
+        return True
+
+    try:
+
+        elapsed = time.time() - float(
+            last_sent
+        )
+
+    except (TypeError, ValueError):
+        return True
+
+    return (
+        elapsed
+        >= ALERTA_EMAIL_INTERVALO_SEGUNDOS
+    )
+
+
+def mark_alert_sent(
+    alert_key
+):
+
+    state = load_alert_state()
+
+    state[alert_key] = time.time()
+
+    save_alert_state(
+        state
+    )
+
+
+def send_throttled_email(
+    alert_key,
+    subject,
+    body
+):
+
+    if not alert_can_be_sent(
+        alert_key
+    ):
+
+        log_warning(
+            f"Alerta de e-mail suprimido por "
+            f"{ALERTA_EMAIL_INTERVALO_HORAS}h: "
+            f"{alert_key}"
+        )
+
+        return False
+
+    sent = send_email(
+        subject,
+        body
+    )
+
+    if sent:
+
+        mark_alert_sent(
+            alert_key
+        )
+
+    return sent
 
 # ============================================================
 # HOSTS.JSON
@@ -863,7 +1080,8 @@ def notify_host_offline(
         f"via SSH."
     )
 
-    send_email(
+    send_throttled_email(
+        f"offline:{ip}",
         assunto,
         mensagem
     )
@@ -885,7 +1103,8 @@ def notify_host_recovered(
         f"via SSH."
     )
 
-    send_email(
+    send_throttled_email(
+        f"recovered:{ip}",
         assunto,
         mensagem
     )

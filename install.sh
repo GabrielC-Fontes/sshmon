@@ -10,7 +10,19 @@ set -e
 APP_DIR="/opt/sshmon"
 SERVICE_FILE="/etc/systemd/system/sshmon.service"
 SECRET_DIR="/etc/sshmon"
-SMTP_PASS_FILE="$SECRET_DIR/smtp_pass"
+SMTP_PASS_ENC_FILE="$SECRET_DIR/smtp_pass.enc"
+SMTP_PASS_KEY_FILE="$SECRET_DIR/smtp_pass.key"
+SMTP_SECRET_TMP=""
+
+cleanup_secret_tmp()
+{
+    if [ -n "$SMTP_SECRET_TMP" ] && [ -d "$SMTP_SECRET_TMP" ]
+    then
+        rm -rf "$SMTP_SECRET_TMP"
+    fi
+}
+
+trap cleanup_secret_tmp EXIT
 
 echo "=================================="
 echo "       SSHMON INSTALLER"
@@ -158,6 +170,54 @@ echo "Python OK: $PYTHON_BIN"
 echo
 
 # ============================================================
+# SSH
+# ============================================================
+
+echo "Verificando cliente SSH..."
+
+if ! command -v ssh >/dev/null 2>&1
+then
+
+    echo "Cliente SSH não encontrado."
+
+    if [ -f /etc/debian_version ]
+    then
+
+        echo "Instalando openssh-client no Debian/Ubuntu..."
+
+        sudo apt update
+        sudo apt install -y openssh-client
+
+    elif [ -f /etc/redhat-release ]
+    then
+
+        echo "Instalando openssh-clients no RHEL/Rocky..."
+
+        sudo dnf install -y openssh-clients
+
+    else
+
+        echo "Distribuição não suportada."
+        echo "Instale o cliente SSH manualmente."
+
+        exit 1
+
+    fi
+
+fi
+
+if ! command -v ssh >/dev/null 2>&1
+then
+
+    echo "ERRO: Cliente SSH não disponível."
+    exit 1
+
+fi
+
+echo "SSH OK: $(command -v ssh)"
+echo
+
+# ============================================================
 # SMTP
 # ============================================================
 
@@ -245,10 +305,12 @@ SMTP_SERVER="$SMTP_SERVER"
 SMTP_PORT="$SMTP_PORT"
 SMTP_TLS="$SMTP_TLS"
 SMTP_USER="$SMTP_USER"
-SMTP_PASS_FILE="$SMTP_PASS_FILE"
+SMTP_PASS_ENC_FILE="$SMTP_PASS_ENC_FILE"
+SMTP_PASS_KEY_FILE="$SMTP_PASS_KEY_FILE"
 SMTP_TO="$SMTP_TO"
 INTERVALO_VERIFICACAO="5"
 FALHAS_PARA_ALERTA="3"
+ALERTA_EMAIL_INTERVALO_HORAS="24"
 SSH_TIMEOUT="5"
 MAX_LOG_SIZE_MB="10"
 EOF
@@ -366,11 +428,7 @@ sudo cp requirements.txt "$APP_DIR/"
 sudo cp hosts.json "$APP_DIR/"
 sudo cp .env "$APP_DIR/"
 
-printf "%s\n" "$SMTP_PASS" | sudo tee "$SMTP_PASS_FILE" >/dev/null
-
 sudo chmod 600 "$APP_DIR/.env"
-sudo chown root:sshmon "$SMTP_PASS_FILE"
-sudo chmod 640 "$SMTP_PASS_FILE"
 
 sudo chown -R sshmon:sshmon "$APP_DIR"
 sudo chown -R sshmon:sshmon /var/log/sshmon
@@ -417,6 +475,78 @@ echo "Instalando dependências..."
 
 sudo -u sshmon "$VENV_PYTHON" -m pip install \
     -r "$APP_DIR/requirements.txt"
+
+echo "Validando dependências Python..."
+
+sudo -u sshmon "$VENV_PYTHON" << 'EOF'
+import cryptography
+import dotenv
+import paramiko
+EOF
+
+echo "Criptografando senha SMTP..."
+
+SMTP_SECRET_TMP=$(mktemp -d /tmp/sshmon-secret.XXXXXX)
+
+SMTP_SECRET_TMP="$SMTP_SECRET_TMP" \
+SMTP_SECRET_PASSWORD="$SMTP_PASS" \
+"$VENV_PYTHON" << 'EOF'
+import os
+from cryptography.fernet import Fernet
+
+tmp_dir = os.environ["SMTP_SECRET_TMP"]
+password = os.environ["SMTP_SECRET_PASSWORD"].encode("utf-8")
+
+key = Fernet.generate_key()
+encrypted_password = Fernet(key).encrypt(password)
+
+with open(
+    os.path.join(tmp_dir, "smtp_pass.key"),
+    "wb"
+) as arquivo:
+    arquivo.write(key + b"\n")
+
+with open(
+    os.path.join(tmp_dir, "smtp_pass.enc"),
+    "wb"
+) as arquivo:
+    arquivo.write(encrypted_password + b"\n")
+EOF
+
+sudo install -o root -g sshmon -m 640 "$SMTP_SECRET_TMP/smtp_pass.enc" "$SMTP_PASS_ENC_FILE"
+sudo install -o root -g sshmon -m 640 "$SMTP_SECRET_TMP/smtp_pass.key" "$SMTP_PASS_KEY_FILE"
+
+rm -rf "$SMTP_SECRET_TMP"
+SMTP_SECRET_TMP=""
+unset SMTP_PASS
+
+echo "Validando leitura da senha criptografada..."
+
+sudo -u sshmon env \
+SMTP_PASS_ENC_FILE="$SMTP_PASS_ENC_FILE" \
+SMTP_PASS_KEY_FILE="$SMTP_PASS_KEY_FILE" \
+"$VENV_PYTHON" << 'EOF'
+import os
+import sys
+from cryptography.fernet import Fernet
+
+with open(
+    os.environ["SMTP_PASS_KEY_FILE"],
+    "rb"
+) as arquivo:
+    key = arquivo.read().strip()
+
+with open(
+    os.environ["SMTP_PASS_ENC_FILE"],
+    "rb"
+) as arquivo:
+    encrypted_password = arquivo.read().strip()
+
+password = Fernet(key).decrypt(encrypted_password)
+
+if not password:
+    sys.exit(1)
+EOF
 
 echo "Dependências instaladas."
 echo
@@ -506,7 +636,8 @@ echo "  $APP_DIR/hosts.json"
 echo
 echo "SMTP:"
 echo "  Configuração: $APP_DIR/.env"
-echo "  Senha: $SMTP_PASS_FILE"
+echo "  Senha criptografada: $SMTP_PASS_ENC_FILE"
+echo "  Chave local: $SMTP_PASS_KEY_FILE"
 echo
 echo "Chaves SSH:"
 echo "  Após a instalação, coloque suas chaves .pem ou .ppk em:"
