@@ -72,7 +72,7 @@ Exemplo com chave SSH:
     "nome": "Servidor 2",
     "ip": "192.168.1.20",
     "usuario": "usuario",
-    "certificado": "/home/sshmon/.ssh/id_rsa"
+    "certificado": "/home/sshmon/.ssh/servidor2.pem"
 }
 ```
 
@@ -93,7 +93,7 @@ SMTP_SERVER="smtp.exemplo.com"
 SMTP_PORT="587"
 SMTP_TLS="starttls"
 SMTP_USER="alertas@exemplo.com"
-SMTP_PASS="senha"
+SMTP_PASS_FILE="/etc/sshmon/smtp_pass"
 SMTP_TO="destino@exemplo.com"
 INTERVALO_VERIFICACAO="5"
 FALHAS_PARA_ALERTA="3"
@@ -153,12 +153,21 @@ chmod +x uninstall.sh
 ## Seguranca
 
 - Nao publique o arquivo `.env`.
-- Prefira chave SSH quando possivel.
-- Restrinja permissoes da chave privada:
+- A senha SMTP fica fora do `.env`, em `/etc/sshmon/smtp_pass`.
+- O arquivo da senha deve ficar com permissao restrita:
 
 ```bash
-sudo chown sshmon:sshmon /home/sshmon/.ssh/id_rsa
-sudo chmod 600 /home/sshmon/.ssh/id_rsa
+sudo chown root:sshmon /etc/sshmon/smtp_pass
+sudo chmod 640 /etc/sshmon/smtp_pass
+```
+
+- Prefira chave SSH quando possivel.
+- Coloque chaves `.pem` ou `.ppk` em `/home/sshmon/.ssh/`.
+- Restrinja permissoes das chaves privadas:
+
+```bash
+sudo chown sshmon:sshmon /home/sshmon/.ssh/*.pem /home/sshmon/.ssh/*.ppk
+sudo chmod 600 /home/sshmon/.ssh/*.pem /home/sshmon/.ssh/*.ppk
 ```
 
 ## Licenca

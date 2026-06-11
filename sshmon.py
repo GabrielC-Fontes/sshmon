@@ -128,8 +128,34 @@ SMTP_USER = os.getenv(
     "SMTP_USER"
 )
 
+SMTP_PASS_FILE = os.getenv(
+    "SMTP_PASS_FILE"
+)
+
+
+def read_secret_file(path):
+
+    if not path:
+        return None
+
+    try:
+
+        with open(
+            path,
+            "r",
+            encoding="utf-8"
+        ) as arquivo:
+
+            return arquivo.read().strip()
+
+    except OSError:
+        return None
+
+
 SMTP_PASS = os.getenv(
     "SMTP_PASS"
+) or read_secret_file(
+    SMTP_PASS_FILE
 )
 
 SMTP_TO = os.getenv(

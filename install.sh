@@ -9,6 +9,8 @@ set -e
 
 APP_DIR="/opt/sshmon"
 SERVICE_FILE="/etc/systemd/system/sshmon.service"
+SECRET_DIR="/etc/sshmon"
+SMTP_PASS_FILE="$SECRET_DIR/smtp_pass"
 
 echo "=================================="
 echo "       SSHMON INSTALLER"
@@ -39,6 +41,41 @@ echo
 # ============================================================
 
 echo "Verificando Python..."
+
+PYTHON_BIN=""
+
+python_can_create_venv()
+{
+    TEST_VENV=$(mktemp -d /tmp/sshmon-venv-test.XXXXXX)
+
+    if "$1" -m venv "$TEST_VENV" >/dev/null 2>&1
+    then
+        rm -rf "$TEST_VENV"
+        return 0
+    fi
+
+    rm -rf "$TEST_VENV"
+    return 1
+}
+
+detect_python_venv()
+{
+    for PYTHON_CANDIDATE in python3 /usr/bin/python3 python3.13 python3.12 python3.11 python3.10 python3.9
+    do
+        if command -v "$PYTHON_CANDIDATE" >/dev/null 2>&1
+        then
+            PYTHON_PATH=$(command -v "$PYTHON_CANDIDATE")
+
+            if python_can_create_venv "$PYTHON_PATH"
+            then
+                PYTHON_BIN="$PYTHON_PATH"
+                return 0
+            fi
+        fi
+    done
+
+    return 1
+}
 
 if ! command -v python3 >/dev/null 2>&1
 then
@@ -71,7 +108,53 @@ then
 
 fi
 
-echo "Python OK"
+if ! detect_python_venv
+then
+
+    echo "Módulo venv do Python não encontrado."
+
+    if [ -f /etc/debian_version ]
+    then
+
+        echo "Instalando suporte a ambiente virtual no Debian/Ubuntu..."
+
+        sudo apt update
+        sudo apt install -y python3 python3-venv python3-pip
+
+    elif [ -f /etc/redhat-release ]
+    then
+
+        echo "Instalando suporte a ambiente virtual no RHEL/Rocky..."
+
+        sudo dnf install -y python3 python3-pip
+
+    else
+
+        echo "Distribuição não suportada."
+        echo "Instale o módulo venv do Python manualmente."
+
+        exit 1
+
+    fi
+
+fi
+
+if ! detect_python_venv
+then
+
+    echo
+    echo "ERRO: Nenhuma versão do Python instalada consegue criar ambiente virtual."
+    echo
+    echo "Se o comando python3 aponta para uma versão manual, como Python 3.14,"
+    echo "instale o pacote venv dessa versão ou ajuste o python3 para usar"
+    echo "a versão Python padrão da distribuição."
+    echo
+
+    exit 1
+
+fi
+
+echo "Python OK: $PYTHON_BIN"
 echo
 
 # ============================================================
@@ -162,7 +245,7 @@ SMTP_SERVER="$SMTP_SERVER"
 SMTP_PORT="$SMTP_PORT"
 SMTP_TLS="$SMTP_TLS"
 SMTP_USER="$SMTP_USER"
-SMTP_PASS="$SMTP_PASS"
+SMTP_PASS_FILE="$SMTP_PASS_FILE"
 SMTP_TO="$SMTP_TO"
 INTERVALO_VERIFICACAO="5"
 FALHAS_PARA_ALERTA="3"
@@ -181,15 +264,21 @@ echo
 
 echo "Testando autenticação SMTP..."
 
-python3 << EOF
+SMTP_TEST_SERVER="$SMTP_SERVER" \
+SMTP_TEST_PORT="$SMTP_PORT" \
+SMTP_TEST_USER="$SMTP_USER" \
+SMTP_TEST_PASSWORD="$SMTP_PASS" \
+SMTP_TEST_TLS="$SMTP_TLS" \
+"$PYTHON_BIN" << 'EOF'
 import smtplib
 import sys
+import os
 
-server = "$SMTP_SERVER"
-port = int("$SMTP_PORT")
-user = "$SMTP_USER"
-password = "$SMTP_PASS"
-tls = "$SMTP_TLS"
+server = os.environ["SMTP_TEST_SERVER"]
+port = int(os.environ["SMTP_TEST_PORT"])
+user = os.environ["SMTP_TEST_USER"]
+password = os.environ["SMTP_TEST_PASSWORD"]
+tls = os.environ["SMTP_TEST_TLS"]
 
 try:
 
@@ -252,8 +341,12 @@ echo
 echo "Criando diretórios..."
 
 sudo mkdir -p "$APP_DIR"
+sudo mkdir -p "$SECRET_DIR"
 sudo mkdir -p /var/log/sshmon
 sudo mkdir -p /home/sshmon/.ssh
+
+sudo chown root:sshmon "$SECRET_DIR"
+sudo chmod 750 "$SECRET_DIR"
 
 sudo chown -R sshmon:sshmon /home/sshmon/.ssh
 
@@ -273,7 +366,11 @@ sudo cp requirements.txt "$APP_DIR/"
 sudo cp hosts.json "$APP_DIR/"
 sudo cp .env "$APP_DIR/"
 
+printf "%s\n" "$SMTP_PASS" | sudo tee "$SMTP_PASS_FILE" >/dev/null
+
 sudo chmod 600 "$APP_DIR/.env"
+sudo chown root:sshmon "$SMTP_PASS_FILE"
+sudo chmod 640 "$SMTP_PASS_FILE"
 
 sudo chown -R sshmon:sshmon "$APP_DIR"
 sudo chown -R sshmon:sshmon /var/log/sshmon
@@ -287,15 +384,38 @@ echo
 
 echo "Criando ambiente virtual Python..."
 
-sudo -u sshmon python3 -m venv "$APP_DIR/venv"
+sudo -u sshmon "$PYTHON_BIN" -m venv "$APP_DIR/venv"
+
+VENV_PYTHON="$APP_DIR/venv/bin/python"
+
+if ! sudo -u sshmon "$VENV_PYTHON" -m pip --version >/dev/null 2>&1
+then
+
+    echo "pip não encontrado no ambiente virtual. Tentando instalar com ensurepip..."
+
+    sudo -u sshmon "$VENV_PYTHON" -m ensurepip --upgrade
+
+fi
+
+if ! sudo -u sshmon "$VENV_PYTHON" -m pip --version >/dev/null 2>&1
+then
+
+    echo
+    echo "ERRO: pip não disponível no ambiente virtual."
+    echo "Instale o suporte a pip/venv da versão Python em uso e execute novamente."
+    echo
+
+    exit 1
+
+fi
 
 echo "Atualizando pip..."
 
-sudo -u sshmon "$APP_DIR/venv/bin/pip" install --upgrade pip
+sudo -u sshmon "$VENV_PYTHON" -m pip install --upgrade pip
 
 echo "Instalando dependências..."
 
-sudo -u sshmon "$APP_DIR/venv/bin/pip" install \
+sudo -u sshmon "$VENV_PYTHON" -m pip install \
     -r "$APP_DIR/requirements.txt"
 
 echo "Dependências instaladas."
@@ -385,7 +505,8 @@ echo "Hosts:"
 echo "  $APP_DIR/hosts.json"
 echo
 echo "SMTP:"
-echo "  $APP_DIR/.env"
+echo "  Configuração: $APP_DIR/.env"
+echo "  Senha: $SMTP_PASS_FILE"
 echo
 echo "Chaves SSH:"
 echo "  Após a instalação, coloque suas chaves .pem ou .ppk em:"
