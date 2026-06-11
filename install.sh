@@ -282,67 +282,6 @@ echo "Arquivos copiados."
 echo
 
 # ============================================================
-# CHAVE SSH
-# ============================================================
-
-echo "=================================="
-echo " CONFIGURAÇÃO DA CHAVE SSH"
-echo "=================================="
-echo
-echo "Para autenticação por certificado,"
-echo "copie sua chave privada para:"
-echo
-echo "    /home/sshmon/.ssh/id_rsa"
-echo
-echo "Permissões recomendadas:"
-echo
-echo "    sudo chown sshmon:sshmon /home/sshmon/.ssh/id_rsa"
-echo "    sudo chmod 600 /home/sshmon/.ssh/id_rsa"
-echo
-
-read -p "Deseja configurar a chave SSH agora? (s/n): " EDIT_KEY
-
-case "$EDIT_KEY" in
-    [Ss])
-
-    echo
-    echo "Abra outro terminal e copie sua chave para:"
-    echo
-    echo "    /home/sshmon/.ssh/id_rsa"
-    echo
-    echo "Quando terminar pressione ENTER."
-    read
-
-    ;;
-esac
-
-echo
-
-if [ ! -f /home/sshmon/.ssh/id_rsa ]
-then
-
-    echo
-    echo "ATENÇÃO:"
-    echo
-    echo "Nenhuma chave encontrada em:"
-    echo "    /home/sshmon/.ssh/id_rsa"
-    echo
-    echo "Hosts configurados para autenticação"
-    echo "por certificado irão falhar até que"
-    echo "a chave seja adicionada."
-    echo
-
-else
-
-    sudo chown sshmon:sshmon /home/sshmon/.ssh/id_rsa
-    sudo chmod 600 /home/sshmon/.ssh/id_rsa
-
-    echo "Chave SSH encontrada."
-    echo
-
-fi
-
-# ============================================================
 # AMBIENTE VIRTUAL
 # ============================================================
 
@@ -448,8 +387,13 @@ echo
 echo "SMTP:"
 echo "  $APP_DIR/.env"
 echo
-echo "Chave SSH padrão:"
-echo "  /home/sshmon/.ssh/id_rsa"
+echo "Chaves SSH:"
+echo "  Após a instalação, coloque suas chaves .pem ou .ppk em:"
+echo "  /home/sshmon/.ssh/"
+echo
+echo "  Depois ajuste as permissões:"
+echo "  sudo chown sshmon:sshmon /home/sshmon/.ssh/*.pem /home/sshmon/.ssh/*.ppk"
+echo "  sudo chmod 600 /home/sshmon/.ssh/*.pem /home/sshmon/.ssh/*.ppk"
 echo
 echo "Logs:"
 echo "  /var/log/sshmon/successful.log"
