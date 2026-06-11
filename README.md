@@ -160,3 +160,9 @@ chmod +x uninstall.sh
 sudo chown sshmon:sshmon /home/sshmon/.ssh/id_rsa
 sudo chmod 600 /home/sshmon/.ssh/id_rsa
 ```
+
+## Licenca
+
+Este projeto esta licenciado sob a MIT License. Voce pode usar, copiar, modificar, distribuir e utilizar este software para qualquer finalidade, inclusive comercial, desde que mantenha o aviso de copyright e a licenca.
+
+O repositorio oficial e mantido apenas pelo autor. Contribuicoes podem ser sugeridas via Pull Request, mas alteracoes no repositorio dependem de aprovacao do mantenedor.
