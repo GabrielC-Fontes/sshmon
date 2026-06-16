@@ -1,12 +1,13 @@
 # SSHMON
 
-SSHMON e um monitor de disponibilidade via SSH para servidores Linux. Ele testa periodicamente a conexao com os hosts configurados, registra logs separados por tipo de evento e envia alertas por e-mail quando um host fica offline ou volta a responder.
+SSHMON e um monitor de disponibilidade via SSH para servidores Linux. Ele testa periodicamente a conexao com os hosts configurados, registra logs separados por tipo de evento e envia alertas por e-mail e/ou Telegram quando um host fica offline ou volta a responder.
 
 ## Recursos
 
 - Monitoramento de varios hosts em paralelo.
 - Autenticacao por senha ou chave privada SSH.
 - Alertas SMTP para hosts offline e recuperados.
+- Alertas Telegram via bot criado no BotFather.
 - Supressao de alertas repetidos pelo mesmo host/tipo por 24 horas.
 - Logs separados para sucesso, falha, acesso negado e avisos.
 - Rotacao simples de logs por tamanho.
@@ -43,6 +44,7 @@ O instalador ira:
 - validar os arquivos obrigatorios;
 - validar Python, `venv`, `pip` e cliente SSH;
 - configurar SMTP e criar o arquivo `.env`;
+- configurar Telegram opcionalmente;
 - criar o usuario de servico `sshmon`;
 - copiar os arquivos para `/opt/sshmon`;
 - criptografar a senha SMTP em `/etc/sshmon`;
@@ -101,6 +103,8 @@ SMTP_USER="alertas@exemplo.com"
 SMTP_PASS_ENC_FILE="/etc/sshmon/smtp_pass.enc"
 SMTP_PASS_KEY_FILE="/etc/sshmon/smtp_pass.key"
 SMTP_TO="destino@exemplo.com"
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
 INTERVALO_VERIFICACAO="5"
 FALHAS_PARA_ALERTA="3"
 ALERTA_EMAIL_INTERVALO_HORAS="24"
@@ -113,6 +117,45 @@ MAX_LOG_SIZE_MB="10"
 `INTERVALO_VERIFICACAO` e `SSH_TIMEOUT` sao em segundos.
 
 `ALERTA_EMAIL_INTERVALO_HORAS` controla por quantas horas um alerta do mesmo tipo para o mesmo host nao sera reenviado. O padrao e `24`.
+
+## Alertas Telegram
+
+Para habilitar alertas via Telegram:
+
+1. Abra uma conversa com `@BotFather` no Telegram.
+2. Envie `/newbot` e siga as instrucoes para criar o bot.
+3. Copie o token gerado pelo BotFather.
+4. Abra uma conversa com o bot criado e envie qualquer mensagem para ele.
+5. Acesse no navegador:
+
+```text
+https://api.telegram.org/botSEU_TOKEN/getUpdates
+```
+
+6. Procure o campo `chat.id` no retorno e use esse valor como `TELEGRAM_CHAT_ID`.
+
+Para grupos, adicione o bot ao grupo, envie uma mensagem no grupo e consulte o mesmo `getUpdates`. O `chat.id` de grupos normalmente e negativo.
+
+Depois edite:
+
+```bash
+sudo nano /opt/sshmon/.env
+```
+
+E configure:
+
+```env
+TELEGRAM_BOT_TOKEN="123456789:token_do_bot"
+TELEGRAM_CHAT_ID="123456789"
+```
+
+Reinicie o servico:
+
+```bash
+sudo systemctl restart sshmon
+```
+
+Se SMTP e Telegram estiverem configurados, o SSHMON tentara enviar os alertas pelos dois canais. Se apenas um estiver configurado corretamente, esse canal sera usado.
 
 ## Logs
 

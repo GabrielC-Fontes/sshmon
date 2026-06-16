@@ -6,6 +6,8 @@ import time
 import socket
 import traceback
 import smtplib
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from email.message import EmailMessage
 from concurrent.futures import (
@@ -243,6 +245,15 @@ SMTP_TO = os.getenv(
 )
 
 
+TELEGRAM_BOT_TOKEN = os.getenv(
+    "TELEGRAM_BOT_TOKEN"
+)
+
+TELEGRAM_CHAT_ID = os.getenv(
+    "TELEGRAM_CHAT_ID"
+)
+
+
 def smtp_configured():
 
     return all([
@@ -250,6 +261,14 @@ def smtp_configured():
         SMTP_USER,
         SMTP_PASS,
         SMTP_TO
+    ])
+
+
+def telegram_configured():
+
+    return all([
+        TELEGRAM_BOT_TOKEN,
+        TELEGRAM_CHAT_ID
     ])
 
 
@@ -467,6 +486,73 @@ def send_email(
             pass
 
 
+def send_telegram(
+    subject,
+    body
+):
+
+    if not telegram_configured():
+
+        log_warning(
+            "Telegram não configurado. Alerta por Telegram ignorado."
+        )
+
+        return False
+
+    try:
+
+        mensagem = (
+            f"{subject}\n\n"
+            f"{body}"
+        )
+
+        dados = urllib.parse.urlencode({
+
+            "chat_id":
+                TELEGRAM_CHAT_ID,
+
+            "text":
+                mensagem
+        }).encode(
+            "utf-8"
+        )
+
+        url = (
+            "https://api.telegram.org/bot"
+            f"{TELEGRAM_BOT_TOKEN}"
+            "/sendMessage"
+        )
+
+        request = urllib.request.Request(
+            url,
+            data=dados,
+            method="POST"
+        )
+
+        with urllib.request.urlopen(
+            request,
+            timeout=30
+        ) as response:
+
+            if response.status != 200:
+
+                log_warning(
+                    f"TELEGRAM ERROR: HTTP {response.status}"
+                )
+
+                return False
+
+        return True
+
+    except Exception as erro:
+
+        log_warning(
+            f"TELEGRAM ERROR: {erro}"
+        )
+
+        return False
+
+
 def load_alert_state():
 
     try:
@@ -568,7 +654,7 @@ def mark_alert_sent(
     )
 
 
-def send_throttled_email(
+def send_throttled_alert(
     alert_key,
     subject,
     body
@@ -579,16 +665,27 @@ def send_throttled_email(
     ):
 
         log_warning(
-            f"Alerta de e-mail suprimido por "
+            f"Alerta suprimido por "
             f"{ALERTA_EMAIL_INTERVALO_HORAS}h: "
             f"{alert_key}"
         )
 
         return False
 
-    sent = send_email(
+    sent_email = send_email(
         subject,
         body
+    )
+
+    sent_telegram = send_telegram(
+        subject,
+        body
+    )
+
+    sent = (
+        sent_email
+        or
+        sent_telegram
     )
 
     if sent:
@@ -598,6 +695,19 @@ def send_throttled_email(
         )
 
     return sent
+
+
+def send_throttled_email(
+    alert_key,
+    subject,
+    body
+):
+
+    return send_throttled_alert(
+        alert_key,
+        subject,
+        body
+    )
 
 # ============================================================
 # HOSTS.JSON

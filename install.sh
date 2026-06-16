@@ -300,6 +300,44 @@ done
 
 echo
 
+echo "=================================="
+echo " CONFIGURAÇÃO TELEGRAM"
+echo "=================================="
+echo
+echo "Para usar Telegram, crie um bot no @BotFather e informe o token."
+echo "Deixe em branco para não configurar alertas por Telegram agora."
+echo
+
+read -p "Token do bot Telegram: " TELEGRAM_BOT_TOKEN
+
+TELEGRAM_CHAT_ID=""
+
+if [ -n "$TELEGRAM_BOT_TOKEN" ]
+then
+
+    echo
+    echo "Envie uma mensagem para o bot antes de informar o chat_id."
+    echo "Para grupos, adicione o bot ao grupo e use o chat_id do grupo."
+    echo
+
+    while true
+    do
+
+        read -p "Chat ID do Telegram: " TELEGRAM_CHAT_ID
+
+        if [ -n "$TELEGRAM_CHAT_ID" ]
+        then
+            break
+        fi
+
+        echo "Chat ID não pode estar vazio quando o token foi informado."
+
+    done
+
+fi
+
+echo
+
 cat > .env << EOF
 SMTP_SERVER="$SMTP_SERVER"
 SMTP_PORT="$SMTP_PORT"
@@ -308,6 +346,8 @@ SMTP_USER="$SMTP_USER"
 SMTP_PASS_ENC_FILE="$SMTP_PASS_ENC_FILE"
 SMTP_PASS_KEY_FILE="$SMTP_PASS_KEY_FILE"
 SMTP_TO="$SMTP_TO"
+TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN"
+TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID"
 INTERVALO_VERIFICACAO="5"
 FALHAS_PARA_ALERTA="3"
 ALERTA_EMAIL_INTERVALO_HORAS="24"
@@ -384,6 +424,62 @@ EOF
 
 echo "SMTP validado com sucesso."
 echo
+
+# ============================================================
+# TESTE TELEGRAM
+# ============================================================
+
+if [ -n "$TELEGRAM_BOT_TOKEN" ]
+then
+
+    echo "Testando envio Telegram..."
+
+    TELEGRAM_TEST_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
+    TELEGRAM_TEST_CHAT_ID="$TELEGRAM_CHAT_ID" \
+    "$PYTHON_BIN" << 'EOF'
+import os
+import sys
+import urllib.parse
+import urllib.request
+
+token = os.environ["TELEGRAM_TEST_BOT_TOKEN"]
+chat_id = os.environ["TELEGRAM_TEST_CHAT_ID"]
+
+data = urllib.parse.urlencode({
+    "chat_id": chat_id,
+    "text": "SSHMON: teste de integração Telegram OK"
+}).encode("utf-8")
+
+url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+try:
+    request = urllib.request.Request(
+        url,
+        data=data,
+        method="POST"
+    )
+
+    with urllib.request.urlopen(
+        request,
+        timeout=20
+    ) as response:
+
+        if response.status != 200:
+            print(f"Telegram retornou HTTP {response.status}")
+            sys.exit(1)
+
+    print("Telegram OK")
+
+except Exception as e:
+    print("Falha no teste Telegram:")
+    print(e)
+    sys.exit(1)
+EOF
+
+    echo "Telegram validado com sucesso."
+    echo
+
+fi
 
 # ============================================================
 # USUÁRIO DO SERVIÇO
