@@ -396,8 +396,22 @@ then
 
     echo
     echo "Envie uma mensagem para o bot antes de informar o chat_id."
+    echo "Se for uma conversa direta com o bot, abra o bot e envie /start."
     echo "Para grupos, adicione o bot ao grupo e use o chat_id do grupo."
     echo
+
+    while true
+    do
+
+        read -p "Você já enviou /start para o bot? [s/N]: " TELEGRAM_START_CONFIRMADO
+
+        case "$TELEGRAM_START_CONFIRMADO" in
+            [Ss]) break ;;
+        esac
+
+        echo "Abra o bot no Telegram, envie /start e depois confirme aqui."
+
+    done
 
     while true
     do
@@ -518,67 +532,6 @@ else
 fi
 
 # ============================================================
-# TESTE TELEGRAM
-# ============================================================
-
-if [ "$TELEGRAM_ENABLED" = "1" ]
-then
-
-    echo "Testando envio Telegram..."
-
-    TELEGRAM_TEST_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
-    TELEGRAM_TEST_CHAT_ID="$TELEGRAM_CHAT_ID" \
-    "$PYTHON_BIN" << 'EOF'
-import os
-import sys
-import urllib.parse
-import urllib.request
-
-token = os.environ["TELEGRAM_TEST_BOT_TOKEN"]
-chat_id = os.environ["TELEGRAM_TEST_CHAT_ID"]
-
-data = urllib.parse.urlencode({
-    "chat_id": chat_id,
-    "text": "SSHMON: teste de integração Telegram OK"
-}).encode("utf-8")
-
-url = f"https://api.telegram.org/bot{token}/sendMessage"
-
-try:
-    request = urllib.request.Request(
-        url,
-        data=data,
-        method="POST"
-    )
-
-    with urllib.request.urlopen(
-        request,
-        timeout=20
-    ) as response:
-
-        if response.status != 200:
-            print(f"Telegram retornou HTTP {response.status}")
-            sys.exit(1)
-
-    print("Telegram OK")
-
-except Exception as e:
-    print("Falha no teste Telegram:")
-    print(e)
-    sys.exit(1)
-EOF
-
-    echo "Telegram validado com sucesso."
-    echo
-
-else
-
-    echo "Telegram desativado. Pulando teste Telegram."
-    echo
-
-fi
-
-# ============================================================
 # USUÁRIO DO SERVIÇO
 # ============================================================
 
@@ -669,6 +622,15 @@ echo "Instalando dependências..."
 sudo -u sshmon "$VENV_PYTHON" -m pip install \
     -r "$APP_DIR/requirements.txt"
 
+if [ "$TELEGRAM_ENABLED" = "1" ]
+then
+
+    echo "Instalando biblioteca telebot..."
+
+    sudo -u sshmon "$VENV_PYTHON" -m pip install telebot
+
+fi
+
 echo "Validando dependências Python..."
 
 sudo -u sshmon "$VENV_PYTHON" << 'EOF'
@@ -676,6 +638,67 @@ import cryptography
 import dotenv
 import paramiko
 EOF
+
+if [ "$TELEGRAM_ENABLED" = "1" ]
+then
+
+    echo "Validando biblioteca telebot..."
+
+    sudo -u sshmon "$VENV_PYTHON" << 'EOF'
+import telebot
+EOF
+
+fi
+
+# ============================================================
+# TESTE TELEGRAM
+# ============================================================
+
+if [ "$TELEGRAM_ENABLED" = "1" ]
+then
+
+    echo "Testando envio Telegram com telebot..."
+
+    sudo -u sshmon env \
+    TELEGRAM_TEST_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
+    TELEGRAM_TEST_CHAT_ID="$TELEGRAM_CHAT_ID" \
+    "$VENV_PYTHON" << 'EOF'
+import os
+import sys
+import telebot
+
+token = os.environ["TELEGRAM_TEST_BOT_TOKEN"]
+chat_id = os.environ["TELEGRAM_TEST_CHAT_ID"]
+
+try:
+    bot = telebot.TeleBot(
+        token,
+        parse_mode=None
+    )
+
+    bot.send_message(
+        chat_id,
+        "SSHMON: teste de integração Telegram OK"
+    )
+
+    print("Telegram OK")
+
+except Exception as e:
+    print("Falha no teste Telegram:")
+    print(e)
+    print("Confirme se o token está correto, se o chat_id é válido e se você enviou /start para o bot.")
+    sys.exit(1)
+EOF
+
+    echo "Telegram validado com sucesso."
+    echo
+
+else
+
+    echo "Telegram desativado. Pulando instalação e teste do telebot."
+    echo
+
+fi
 
 if [ "$SMTP_ENABLED" = "1" ]
 then
