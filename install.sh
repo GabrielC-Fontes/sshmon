@@ -218,102 +218,181 @@ echo "SSH OK: $(command -v ssh)"
 echo
 
 # ============================================================
+# MÉTODO DE ALERTA
+# ============================================================
+
+SMTP_ENABLED="0"
+TELEGRAM_ENABLED="0"
+SMTP_SERVER=""
+SMTP_PORT=""
+SMTP_TLS=""
+SMTP_USER=""
+SMTP_PASS=""
+SMTP_TO=""
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+
+while true
+do
+    echo "=================================="
+    echo " MÉTODO DE ALERTA"
+    echo "=================================="
+    echo
+    echo "1 - SMTP / E-mail"
+    echo "2 - Telegram / BotFather"
+    echo "3 - Ambos"
+    echo
+    read -p "Escolha [1]: " ALERTA_OPCAO
+    ALERTA_OPCAO=${ALERTA_OPCAO:-1}
+
+    case "$ALERTA_OPCAO" in
+        1)
+            SMTP_ENABLED="1"
+            TELEGRAM_ENABLED="0"
+            break
+            ;;
+        2)
+            SMTP_ENABLED="0"
+            TELEGRAM_ENABLED="1"
+            break
+            ;;
+        3)
+            SMTP_ENABLED="1"
+            TELEGRAM_ENABLED="1"
+            break
+            ;;
+        *)
+            echo "Opção inválida. Escolha 1, 2 ou 3."
+            echo
+            ;;
+    esac
+done
+
+echo
+
+# ============================================================
 # SMTP
 # ============================================================
 
-echo "=================================="
-echo " CONFIGURAÇÃO SMTP"
-echo "=================================="
-echo
-
-read -p "Servidor SMTP: " SMTP_SERVER
-
-read -p "Porta SMTP [587]: " SMTP_PORT
-SMTP_PORT=${SMTP_PORT:-587}
-
-echo
-echo "Criptografia:"
-echo "1 - STARTTLS"
-echo "2 - SSL/TLS"
-echo
-
-read -p "Escolha [1]: " SMTP_TLS_OPCAO
-
-if [ "$SMTP_TLS_OPCAO" = "2" ]
+if [ "$SMTP_ENABLED" = "1" ]
 then
-    SMTP_TLS="ssl"
-else
-    SMTP_TLS="starttls"
-fi
 
-echo
+    echo "=================================="
+    echo " CONFIGURAÇÃO SMTP"
+    echo "=================================="
+    echo
 
-while true
-do
+    while true
+    do
+        read -p "Servidor SMTP: " SMTP_SERVER
 
-    read -p "E-mail remetente: " SMTP_USER
+        if [ -n "$SMTP_SERVER" ]
+        then
+            break
+        fi
 
-    case "$SMTP_USER" in
-        *@*) break ;;
-    esac
+        echo "Servidor SMTP não pode estar vazio."
+    done
 
-    echo "E-mail inválido. Deve conter @."
+    read -p "Porta SMTP [587]: " SMTP_PORT
+    SMTP_PORT=${SMTP_PORT:-587}
 
-done
+    echo
+    echo "Criptografia:"
+    echo "1 - STARTTLS"
+    echo "2 - SSL/TLS"
+    echo
 
-echo
+    read -p "Escolha [1]: " SMTP_TLS_OPCAO
 
-while true
-do
-
-    printf "Senha do e-mail: "
-
-    stty -echo
-    read SMTP_PASS
-    stty echo
-
-    printf "\n"
-
-    if [ -n "$SMTP_PASS" ]
+    if [ "$SMTP_TLS_OPCAO" = "2" ]
     then
-        break
+        SMTP_TLS="ssl"
+    else
+        SMTP_TLS="starttls"
     fi
 
-    echo "Senha não pode estar vazia."
+    echo
 
-done
+    while true
+    do
 
-echo
+        read -p "E-mail remetente: " SMTP_USER
 
-while true
-do
+        case "$SMTP_USER" in
+            *@*) break ;;
+        esac
 
-    read -p "E-mail destinatário dos alertas: " SMTP_TO
+        echo "E-mail inválido. Deve conter @."
 
-    case "$SMTP_TO" in
-        *@*) break ;;
-    esac
+    done
 
-    echo "E-mail inválido. Deve conter @."
+    echo
 
-done
+    while true
+    do
 
-echo
+        printf "Senha do e-mail: "
 
-echo "=================================="
-echo " CONFIGURAÇÃO TELEGRAM"
-echo "=================================="
-echo
-echo "Para usar Telegram, crie um bot no @BotFather e informe o token."
-echo "Deixe em branco para não configurar alertas por Telegram agora."
-echo
+        stty -echo
+        read SMTP_PASS
+        stty echo
 
-read -p "Token do bot Telegram: " TELEGRAM_BOT_TOKEN
+        printf "\n"
 
-TELEGRAM_CHAT_ID=""
+        if [ -n "$SMTP_PASS" ]
+        then
+            break
+        fi
 
-if [ -n "$TELEGRAM_BOT_TOKEN" ]
+        echo "Senha não pode estar vazia."
+
+    done
+
+    echo
+
+    while true
+    do
+
+        read -p "E-mail destinatário dos alertas: " SMTP_TO
+
+        case "$SMTP_TO" in
+            *@*) break ;;
+        esac
+
+        echo "E-mail inválido. Deve conter @."
+
+    done
+
+    echo
+
+fi
+
+# ============================================================
+# TELEGRAM / BOTFATHER
+# ============================================================
+
+if [ "$TELEGRAM_ENABLED" = "1" ]
 then
+
+    echo "=================================="
+    echo " CONFIGURAÇÃO TELEGRAM"
+    echo "=================================="
+    echo
+    echo "Crie um bot no Telegram pelo @BotFather e informe o token."
+    echo
+
+    while true
+    do
+        read -p "Token do bot Telegram: " TELEGRAM_BOT_TOKEN
+
+        if [ -n "$TELEGRAM_BOT_TOKEN" ]
+        then
+            break
+        fi
+
+        echo "Token do Telegram não pode estar vazio."
+    done
 
     echo
     echo "Envie uma mensagem para o bot antes de informar o chat_id."
@@ -330,15 +409,18 @@ then
             break
         fi
 
-        echo "Chat ID não pode estar vazio quando o token foi informado."
+        echo "Chat ID não pode estar vazio."
 
     done
 
+    echo
+
 fi
 
-echo
-
 cat > .env << EOF
+ALERTA_METODO="$ALERTA_OPCAO"
+SMTP_ENABLED="$SMTP_ENABLED"
+TELEGRAM_ENABLED="$TELEGRAM_ENABLED"
 SMTP_SERVER="$SMTP_SERVER"
 SMTP_PORT="$SMTP_PORT"
 SMTP_TLS="$SMTP_TLS"
@@ -364,14 +446,17 @@ echo
 # TESTE SMTP
 # ============================================================
 
-echo "Testando autenticação SMTP..."
+if [ "$SMTP_ENABLED" = "1" ]
+then
 
-SMTP_TEST_SERVER="$SMTP_SERVER" \
-SMTP_TEST_PORT="$SMTP_PORT" \
-SMTP_TEST_USER="$SMTP_USER" \
-SMTP_TEST_PASSWORD="$SMTP_PASS" \
-SMTP_TEST_TLS="$SMTP_TLS" \
-"$PYTHON_BIN" << 'EOF'
+    echo "Testando autenticação SMTP..."
+
+    SMTP_TEST_SERVER="$SMTP_SERVER" \
+    SMTP_TEST_PORT="$SMTP_PORT" \
+    SMTP_TEST_USER="$SMTP_USER" \
+    SMTP_TEST_PASSWORD="$SMTP_PASS" \
+    SMTP_TEST_TLS="$SMTP_TLS" \
+    "$PYTHON_BIN" << 'EOF'
 import smtplib
 import sys
 import os
@@ -422,14 +507,21 @@ except Exception as e:
 
 EOF
 
-echo "SMTP validado com sucesso."
-echo
+    echo "SMTP validado com sucesso."
+    echo
+
+else
+
+    echo "SMTP desativado. Pulando teste SMTP."
+    echo
+
+fi
 
 # ============================================================
 # TESTE TELEGRAM
 # ============================================================
 
-if [ -n "$TELEGRAM_BOT_TOKEN" ]
+if [ "$TELEGRAM_ENABLED" = "1" ]
 then
 
     echo "Testando envio Telegram..."
@@ -477,6 +569,11 @@ except Exception as e:
 EOF
 
     echo "Telegram validado com sucesso."
+    echo
+
+else
+
+    echo "Telegram desativado. Pulando teste Telegram."
     echo
 
 fi
@@ -580,13 +677,16 @@ import dotenv
 import paramiko
 EOF
 
-echo "Criptografando senha SMTP..."
+if [ "$SMTP_ENABLED" = "1" ]
+then
 
-SMTP_SECRET_TMP=$(mktemp -d /tmp/sshmon-secret.XXXXXX)
+    echo "Criptografando senha SMTP..."
 
-SMTP_SECRET_TMP="$SMTP_SECRET_TMP" \
-SMTP_SECRET_PASSWORD="$SMTP_PASS" \
-"$VENV_PYTHON" << 'EOF'
+    SMTP_SECRET_TMP=$(mktemp -d /tmp/sshmon-secret.XXXXXX)
+
+    SMTP_SECRET_TMP="$SMTP_SECRET_TMP" \
+    SMTP_SECRET_PASSWORD="$SMTP_PASS" \
+    "$VENV_PYTHON" << 'EOF'
 import os
 from cryptography.fernet import Fernet
 
@@ -609,19 +709,19 @@ with open(
     arquivo.write(encrypted_password + b"\n")
 EOF
 
-sudo install -o root -g sshmon -m 640 "$SMTP_SECRET_TMP/smtp_pass.enc" "$SMTP_PASS_ENC_FILE"
-sudo install -o root -g sshmon -m 640 "$SMTP_SECRET_TMP/smtp_pass.key" "$SMTP_PASS_KEY_FILE"
+    sudo install -o root -g sshmon -m 640 "$SMTP_SECRET_TMP/smtp_pass.enc" "$SMTP_PASS_ENC_FILE"
+    sudo install -o root -g sshmon -m 640 "$SMTP_SECRET_TMP/smtp_pass.key" "$SMTP_PASS_KEY_FILE"
 
-rm -rf "$SMTP_SECRET_TMP"
-SMTP_SECRET_TMP=""
-unset SMTP_PASS
+    rm -rf "$SMTP_SECRET_TMP"
+    SMTP_SECRET_TMP=""
+    unset SMTP_PASS
 
-echo "Validando leitura da senha criptografada..."
+    echo "Validando leitura da senha criptografada..."
 
-sudo -u sshmon env \
-SMTP_PASS_ENC_FILE="$SMTP_PASS_ENC_FILE" \
-SMTP_PASS_KEY_FILE="$SMTP_PASS_KEY_FILE" \
-"$VENV_PYTHON" << 'EOF'
+    sudo -u sshmon env \
+    SMTP_PASS_ENC_FILE="$SMTP_PASS_ENC_FILE" \
+    SMTP_PASS_KEY_FILE="$SMTP_PASS_KEY_FILE" \
+    "$VENV_PYTHON" << 'EOF'
 import os
 import sys
 from cryptography.fernet import Fernet
@@ -643,6 +743,12 @@ password = Fernet(key).decrypt(encrypted_password)
 if not password:
     sys.exit(1)
 EOF
+
+else
+
+    echo "SMTP desativado. Não será criada senha SMTP criptografada."
+
+fi
 
 echo "Dependências instaladas."
 echo
@@ -730,10 +836,22 @@ echo
 echo "Hosts:"
 echo "  $APP_DIR/hosts.json"
 echo
-echo "SMTP:"
+echo "Alertas:"
 echo "  Configuração: $APP_DIR/.env"
-echo "  Senha criptografada: $SMTP_PASS_ENC_FILE"
-echo "  Chave local: $SMTP_PASS_KEY_FILE"
+if [ "$SMTP_ENABLED" = "1" ]
+then
+    echo "  SMTP: ativado"
+    echo "  Senha criptografada: $SMTP_PASS_ENC_FILE"
+    echo "  Chave local: $SMTP_PASS_KEY_FILE"
+else
+    echo "  SMTP: desativado"
+fi
+if [ "$TELEGRAM_ENABLED" = "1" ]
+then
+    echo "  Telegram/BotFather: ativado"
+else
+    echo "  Telegram/BotFather: desativado"
+fi
 echo
 echo "Chaves SSH:"
 echo "  Após a instalação, coloque suas chaves .pem ou .ppk em:"
