@@ -125,7 +125,7 @@ Para habilitar alertas via Telegram:
 1. Abra uma conversa com `@BotFather` no Telegram.
 2. Envie `/newbot` e siga as instrucoes para criar o bot.
 3. Copie o token gerado pelo BotFather.
-4. Abra uma conversa com o bot criado e envie qualquer mensagem para ele.
+4. Abra uma conversa com o bot criado e envie `/start`.
 5. Acesse no navegador:
 
 ```text
@@ -135,6 +135,10 @@ https://api.telegram.org/botSEU_TOKEN/getUpdates
 6. Procure o campo `chat.id` no retorno e use esse valor como `TELEGRAM_CHAT_ID`.
 
 Para grupos, adicione o bot ao grupo, envie uma mensagem no grupo e consulte o mesmo `getUpdates`. O `chat.id` de grupos normalmente e negativo.
+
+Durante a instalacao, depois que o token for informado, o instalador mostra a URL de `getUpdates` ja preenchida com o token e tambem tenta buscar o `chat_id` automaticamente. Se ele nao encontrar, abra a URL no navegador, procure por `"chat":{"id":...}` e informe esse numero quando solicitado.
+
+O `/start` nao precisa ser enviado sempre. Em conversa privada, o `chat_id` normalmente permanece o mesmo. Envie `/start` novamente se o bot foi bloqueado/desbloqueado, se a conversa foi recriada ou se o teste de envio falhar. Em grupos, o `chat_id` pode mudar se o grupo for migrado para supergrupo; nesse caso, consulte `getUpdates` novamente e atualize `TELEGRAM_CHAT_ID`.
 
 Depois edite:
 

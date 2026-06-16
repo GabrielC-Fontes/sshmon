@@ -399,6 +399,9 @@ then
     echo "Se for uma conversa direta com o bot, abra o bot e envie /start."
     echo "Para grupos, adicione o bot ao grupo e use o chat_id do grupo."
     echo
+    echo "URL para consultar updates do bot:"
+    echo "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates"
+    echo
 
     while true
     do
@@ -413,8 +416,109 @@ then
 
     done
 
+    read -p "Tentar buscar o chat_id automaticamente agora? [S/n]: " TELEGRAM_BUSCAR_CHAT_ID
+
+    case "$TELEGRAM_BUSCAR_CHAT_ID" in
+        [Nn])
+            TELEGRAM_CHAT_ID=""
+            ;;
+        *)
+            echo "Buscando chat_id em getUpdates..."
+
+            TELEGRAM_CHAT_ID=$(
+                TELEGRAM_GETUPDATES_TOKEN="$TELEGRAM_BOT_TOKEN" \
+                "$PYTHON_BIN" << 'EOF'
+import json
+import os
+import sys
+import urllib.request
+
+token = os.environ["TELEGRAM_GETUPDATES_TOKEN"]
+url = f"https://api.telegram.org/bot{token}/getUpdates"
+
+
+def extract_chat(update):
+    for key in [
+        "message",
+        "edited_message",
+        "channel_post",
+        "edited_channel_post"
+    ]:
+        item = update.get(key)
+
+        if isinstance(item, dict):
+            chat = item.get("chat")
+
+            if isinstance(chat, dict) and chat.get("id") is not None:
+                return chat
+
+    callback_query = update.get("callback_query")
+
+    if isinstance(callback_query, dict):
+        message = callback_query.get("message")
+
+        if isinstance(message, dict):
+            chat = message.get("chat")
+
+            if isinstance(chat, dict) and chat.get("id") is not None:
+                return chat
+
+    return None
+
+
+try:
+    with urllib.request.urlopen(
+        url,
+        timeout=20
+    ) as response:
+        data = json.load(response)
+
+except Exception as erro:
+    print(
+        f"Erro ao consultar getUpdates: {erro}",
+        file=sys.stderr
+    )
+    sys.exit(1)
+
+if not data.get("ok"):
+    print(
+        data.get("description", "Resposta invalida do Telegram."),
+        file=sys.stderr
+    )
+    sys.exit(1)
+
+for update in reversed(data.get("result", [])):
+    chat = extract_chat(update)
+
+    if chat:
+        print(chat["id"])
+        sys.exit(0)
+
+print(
+    "Nenhum chat_id encontrado. Envie /start ao bot e tente novamente.",
+    file=sys.stderr
+)
+sys.exit(1)
+EOF
+            ) || TELEGRAM_CHAT_ID=""
+
+            if [ -n "$TELEGRAM_CHAT_ID" ]
+            then
+                echo "Chat ID encontrado: $TELEGRAM_CHAT_ID"
+            else
+                echo "Não foi possível detectar o chat_id automaticamente."
+                echo "Abra a URL acima no navegador e procure por chat.id."
+            fi
+            ;;
+    esac
+
     while true
     do
+
+        if [ -n "$TELEGRAM_CHAT_ID" ]
+        then
+            break
+        fi
 
         read -p "Chat ID do Telegram: " TELEGRAM_CHAT_ID
 
@@ -657,12 +761,15 @@ fi
 if [ "$TELEGRAM_ENABLED" = "1" ]
 then
 
-    echo "Testando envio Telegram com telebot..."
+    while true
+    do
 
-    sudo -u sshmon env \
-    TELEGRAM_TEST_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
-    TELEGRAM_TEST_CHAT_ID="$TELEGRAM_CHAT_ID" \
-    "$VENV_PYTHON" << 'EOF'
+        echo "Testando envio Telegram com telebot..."
+
+        if sudo -u sshmon env \
+        TELEGRAM_TEST_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
+        TELEGRAM_TEST_CHAT_ID="$TELEGRAM_CHAT_ID" \
+        "$VENV_PYTHON" << 'EOF'
 import os
 import sys
 import telebot
@@ -689,9 +796,173 @@ except Exception as e:
     print("Confirme se o token está correto, se o chat_id é válido e se você enviou /start para o bot.")
     sys.exit(1)
 EOF
+        then
 
-    echo "Telegram validado com sucesso."
-    echo
+            echo "Telegram validado com sucesso."
+            echo
+            break
+
+        fi
+
+        echo
+        echo "O teste Telegram falhou."
+        echo "Se o chat_id mudou, se o bot foi bloqueado/desbloqueado ou se é uma conversa nova,"
+        echo "envie /start novamente para o bot e tente atualizar o chat_id."
+        echo
+        echo "URL para consultar updates do bot:"
+        echo "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates"
+        echo
+
+        read -p "Tentar buscar um novo chat_id automaticamente? [S/n]: " TELEGRAM_REBUSCAR_CHAT_ID
+
+        case "$TELEGRAM_REBUSCAR_CHAT_ID" in
+            [Nn])
+                read -p "Informar um novo chat_id manualmente? [s/N]: " TELEGRAM_CHAT_ID_MANUAL
+
+                case "$TELEGRAM_CHAT_ID_MANUAL" in
+                    [Ss])
+                        TELEGRAM_CHAT_ID=""
+                        ;;
+                    *)
+                        echo "Instalação interrompida. Corrija o Telegram e execute novamente."
+                        exit 1
+                        ;;
+                esac
+                ;;
+            *)
+                echo "Buscando chat_id em getUpdates..."
+
+                TELEGRAM_CHAT_ID=$(
+                    TELEGRAM_GETUPDATES_TOKEN="$TELEGRAM_BOT_TOKEN" \
+                    "$PYTHON_BIN" << 'EOF'
+import json
+import os
+import sys
+import urllib.request
+
+token = os.environ["TELEGRAM_GETUPDATES_TOKEN"]
+url = f"https://api.telegram.org/bot{token}/getUpdates"
+
+
+def extract_chat(update):
+    for key in [
+        "message",
+        "edited_message",
+        "channel_post",
+        "edited_channel_post"
+    ]:
+        item = update.get(key)
+
+        if isinstance(item, dict):
+            chat = item.get("chat")
+
+            if isinstance(chat, dict) and chat.get("id") is not None:
+                return chat
+
+    callback_query = update.get("callback_query")
+
+    if isinstance(callback_query, dict):
+        message = callback_query.get("message")
+
+        if isinstance(message, dict):
+            chat = message.get("chat")
+
+            if isinstance(chat, dict) and chat.get("id") is not None:
+                return chat
+
+    return None
+
+
+try:
+    with urllib.request.urlopen(
+        url,
+        timeout=20
+    ) as response:
+        data = json.load(response)
+
+except Exception as erro:
+    print(
+        f"Erro ao consultar getUpdates: {erro}",
+        file=sys.stderr
+    )
+    sys.exit(1)
+
+if not data.get("ok"):
+    print(
+        data.get("description", "Resposta invalida do Telegram."),
+        file=sys.stderr
+    )
+    sys.exit(1)
+
+for update in reversed(data.get("result", [])):
+    chat = extract_chat(update)
+
+    if chat:
+        print(chat["id"])
+        sys.exit(0)
+
+sys.exit(1)
+EOF
+                ) || TELEGRAM_CHAT_ID=""
+
+                if [ -n "$TELEGRAM_CHAT_ID" ]
+                then
+                    echo "Novo Chat ID encontrado: $TELEGRAM_CHAT_ID"
+                else
+                    echo "Não foi possível detectar automaticamente."
+                fi
+                ;;
+        esac
+
+        while true
+        do
+
+            if [ -n "$TELEGRAM_CHAT_ID" ]
+            then
+                break
+            fi
+
+            read -p "Novo Chat ID do Telegram: " TELEGRAM_CHAT_ID
+
+            if [ -n "$TELEGRAM_CHAT_ID" ]
+            then
+                break
+            fi
+
+            echo "Chat ID não pode estar vazio."
+
+        done
+
+        TELEGRAM_ENV_CHAT_ID="$TELEGRAM_CHAT_ID" "$PYTHON_BIN" << 'EOF'
+import os
+
+chat_id = os.environ["TELEGRAM_ENV_CHAT_ID"]
+
+for path in [".env"]:
+    with open(
+        path,
+        "r",
+        encoding="utf-8"
+    ) as arquivo:
+        linhas = arquivo.readlines()
+
+    with open(
+        path,
+        "w",
+        encoding="utf-8"
+    ) as arquivo:
+        for linha in linhas:
+            if linha.startswith("TELEGRAM_CHAT_ID="):
+                arquivo.write(f'TELEGRAM_CHAT_ID="{chat_id}"\n')
+            else:
+                arquivo.write(linha)
+EOF
+
+        sudo cp .env "$APP_DIR/"
+        sudo chmod 600 "$APP_DIR/.env"
+        sudo chown sshmon:sshmon "$APP_DIR/.env"
+
+    done
 
 else
 
